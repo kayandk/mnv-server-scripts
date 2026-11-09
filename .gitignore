@@ -1,0 +1,55 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.env
+
+# SQLite databases & backups
+*.sqlite
+*.sqlite-*
+*.db
+*.bak
+*.backup
+
+# Archives and compressed files
+*.tar.gz
+*.tgz
+*.gz
+*.zip
+
+# Node.js dependencies and logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Temporary files and runtime work dirs
+/tmp/
+/work/
+.tmp/
+panel-domain.txt
+fetch.mjs
+package.json
+package-lock.json
+
+# Operating System files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*~
+
+# SSL Certificates & Private Keys
+*.pem
+*.key
+*.crt
+*.csr
+
