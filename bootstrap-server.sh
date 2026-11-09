@@ -1,24 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# MNV Panel – Dựng server mới & khôi phục TOÀN BỘ hiện trạng từ Cloudflare R2
-#
-#   R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET_NAME=... \
-#   PANEL_DOMAIN=panel.example.com \
-#   bash bootstrap-server.sh
-#
-# Ubuntu 22.04/24.04, chạy bằng root. Chạy lại nhiều lần an toàn (idempotent).
-#  1. Cài Node.js 22, PM2, Nginx, Certbot, swap
-#  2. Tải bản MNV Panel mới nhất + snapshot cấu hình mới nhất từ R2
-#  3. Khởi động panel; panel tự: ghi .env, deploy lại đúng commit đang chạy,
-#     dựng Nginx cho domain, cấp SSL khi DNS trỏ về server mới.
-#
-# Biến tùy chọn:
-#   PANEL_DOMAIN   domain truy cập panel (vd panel.example.com). Bỏ trống => http://IP:4000
-#   PANEL_PORT     mặc định 4000
-#   PANEL_SHA      cài đúng commit panel này thay vì bản mới nhất
-#   STATE_KEY      dùng snapshot cụ thể (key trên R2) thay vì state/panel-latest.sqlite.gz
-#   FRESH=1        KHÔNG khôi phục cấu hình (cài panel trắng)
-#   R2_ENDPOINT    endpoint S3 tùy chỉnh (MinIO…); mặc định https://<account>.r2.cloudflarestorage.com
+# MNV Panel – Dựng server mới & khôi phục toàn bộ hiện trạng từ Cloudflare R2
+# Ubuntu 22.04/24.04 (root). Idempotent: chạy lại nhiều lần an toàn.
+# Biến bắt buộc: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
+# Biến tùy chọn : PANEL_DOMAIN, PANEL_PORT (4000), PANEL_SHA, STATE_KEY, FRESH, R2_ENDPOINT
 # ==============================================================================
 set -euo pipefail
 
@@ -107,17 +92,27 @@ else
   c_ok "Đã cài Node.js $(node -v)"
 fi
 
-NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"
-export PATH="$PATH:/usr/local/bin:$NPM_BIN"
-hash -r 2>/dev/null || true
-
-if command -v pm2 >/dev/null 2>&1; then
-  c_ok "PM2 đã sẵn sàng: v$(pm2 -v 2>/dev/null) (bỏ qua cài đặt)"
-else
-  npm install -g pm2 --silent >/dev/null
-  hash -r 2>/dev/null || true
-  c_ok "Đã cài PM2 v$(pm2 -v 2>/dev/null || echo 'mới nhất')"
+if ! command -v pm2 >/dev/null 2>&1; then
+  npm install -g pm2 --prefix /usr/local --silent >/dev/null 2>&1 || npm install -g pm2 --silent >/dev/null 2>&1 || true
 fi
+
+# Tự động tìm và tạo symlink pm2 vào /usr/local/bin và /usr/bin cho toàn hệ thống
+NPM_PREFIX_BIN="$(npm config get prefix 2>/dev/null)/bin"
+PM2_BIN=""
+for p in "$(command -v pm2 2>/dev/null)" "/usr/local/bin/pm2" "/usr/bin/pm2" "$NPM_PREFIX_BIN/pm2" "/www/server/nodejs/v22.14.0/bin/pm2"; do
+  if [ -n "$p" ] && [ -x "$p" ]; then
+    PM2_BIN="$p"
+    break
+  fi
+done
+
+if [ -n "$PM2_BIN" ]; then
+  ln -sf "$PM2_BIN" /usr/local/bin/pm2 2>/dev/null || true
+  ln -sf "$PM2_BIN" /usr/bin/pm2 2>/dev/null || true
+fi
+export PATH="/usr/local/bin:$PATH:$NPM_PREFIX_BIN"
+hash -r 2>/dev/null || true
+c_ok "PM2 đã sẵn sàng: v$(pm2 -v 2>/dev/null || echo '7.x') (đã symlink /usr/local/bin/pm2)"
 
 # ------------------------------------------------------------------------------
 c_step "3/6 Tải MNV Panel & snapshot cấu hình từ R2 (bucket ${R2_BUCKET_NAME})"
@@ -230,6 +225,11 @@ c_ok "Panel đã cài"
 
 # ------------------------------------------------------------------------------
 c_step "5/6 Nginx cho panel & firewall"
+if systemctl is-active --quiet apache2 2>/dev/null; then
+  systemctl stop apache2 2>/dev/null || true
+  systemctl disable apache2 2>/dev/null || true
+fi
+
 if [ -n "$PANEL_DOMAIN" ]; then
   cat > /etc/nginx/sites-available/mnv-panel.conf <<EOF
 # Managed by MNV Panel bootstrap
@@ -253,7 +253,7 @@ EOF
   ln -sf /etc/nginx/sites-available/mnv-panel.conf /etc/nginx/sites-enabled/mnv-panel.conf
   rm -f /etc/nginx/sites-enabled/default
   nginx -t >/dev/null 2>&1 || die "Cấu hình nginx lỗi (nginx -t)"
-  nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || systemctl start nginx 2>/dev/null || nginx
+  systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
   c_ok "Nginx: http://${PANEL_DOMAIN} → panel"
 fi
 ufw allow 22/tcp >/dev/null 2>&1 || true; ufw allow 80/tcp >/dev/null 2>&1 || true; ufw allow 443/tcp >/dev/null 2>&1 || true
@@ -264,9 +264,16 @@ ufw --force enable >/dev/null 2>&1 || true
 # ------------------------------------------------------------------------------
 c_step "6/6 Khởi động panel"
 cd "$PANEL_DIR"
-if pm2 describe mnv-panel >/dev/null 2>&1; then pm2 restart mnv-panel --update-env >/dev/null; else pm2 start ecosystem.config.cjs >/dev/null; fi
-pm2 save >/dev/null
-pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
+PM2_RUN="pm2"
+command -v pm2 >/dev/null 2>&1 || PM2_RUN="/usr/local/bin/pm2"
+
+if $PM2_RUN describe mnv-panel >/dev/null 2>&1; then
+  $PM2_RUN restart mnv-panel --update-env >/dev/null
+else
+  $PM2_RUN start ecosystem.config.cjs >/dev/null
+fi
+$PM2_RUN save >/dev/null
+$PM2_RUN startup systemd -u root --hp /root >/dev/null 2>&1 || true
 for _ in $(seq 1 30); do curl -fs "http://127.0.0.1:${PANEL_PORT}/health" >/dev/null 2>&1 && break; sleep 1; done
 curl -fs "http://127.0.0.1:${PANEL_PORT}/health" >/dev/null || die "Panel không khởi động – xem: pm2 logs mnv-panel"
 rm -rf "$WORK"
