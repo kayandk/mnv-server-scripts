@@ -32,35 +32,92 @@ c_ok() { echo -e "\033[32m✔ $*\033[0m"; }
 c_step() { echo -e "\n\033[36m==> $*\033[0m"; }
 die() { echo -e "\033[31m❌ $*\033[0m" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || die "Hãy chạy bằng root (sudo -E bash bootstrap-server.sh)"
+[ "$(id -u)" -eq 0 ] || die "Hãy chạy bằng root (sudo bash bootstrap-server.sh)"
+
+# Tự động nạp file .env nếu có (trong thư mục hiện tại hoặc cùng thư mục script)
+ENV_FILE=""
+if [ -f "./.env" ]; then
+  ENV_FILE="./.env"
+elif [ -f "$(dirname "$0")/.env" ]; then
+  ENV_FILE="$(dirname "$0")/.env"
+fi
+
+if [ -n "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+  c_ok "Đã nạp cấu hình từ $ENV_FILE"
+fi
+
 for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET_NAME; do
-  [ -n "${!v:-}" ] || die "Thiếu biến $v"
+  [ -n "${!v:-}" ] || die "Thiếu biến $v (truyền qua ENV hoặc khai báo trong file .env)"
 done
 
 # ------------------------------------------------------------------------------
 c_step "1/6 Cài gói hệ thống (nginx, certbot, swap)"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y -qq
-apt-get install -y -qq curl ca-certificates tar gzip nginx certbot python3-certbot-nginx ufw >/dev/null
+
+MISSING_PKGS=()
+for pkg in curl ca-certificates tar gzip nginx certbot python3-certbot-nginx ufw; do
+  if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+    MISSING_PKGS+=("$pkg")
+  fi
+done
+
+if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
+  c_step "Cài các gói còn thiếu: ${MISSING_PKGS[*]}"
+  apt-get update -y -qq
+  apt-get install -y -qq "${MISSING_PKGS[@]}" >/dev/null
+  c_ok "Đã cài đặt xong gói hệ thống còn thiếu"
+else
+  c_ok "Gói hệ thống đã có đủ (bỏ qua apt-get install)"
+fi
+
 if ! swapon --show | grep -q .; then
   fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
   chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
   grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
   sysctl -q vm.swappiness=10; grep -q 'vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
   c_ok "Đã tạo swap 2GB"
+else
+  c_ok "Swap đã sẵn sàng (bỏ qua tạo swap)"
 fi
-systemctl enable --now nginx >/dev/null 2>&1 || nginx 2>/dev/null || true
-c_ok "Gói hệ thống sẵn sàng"
+
+if systemctl is-active --quiet nginx 2>/dev/null; then
+  c_ok "Nginx service đang hoạt động"
+else
+  systemctl enable --now nginx >/dev/null 2>&1 || nginx 2>/dev/null || true
+  c_ok "Nginx service đã kích hoạt"
+fi
 
 # ------------------------------------------------------------------------------
 c_step "2/6 Cài Node.js 22 & PM2"
-NODE_MAJOR=$(node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || echo 0)
-if [ "${NODE_MAJOR:-0}" -lt 22 ]; then
+NODE_MAJOR=0
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR=$(node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || echo 0)
+fi
+
+if [ "${NODE_MAJOR:-0}" -ge 22 ]; then
+  c_ok "Node.js đã sẵn sàng: $(node -v) (>= v22, bỏ qua cài đặt)"
+else
+  c_step "Cài Node.js 22 LTS qua NodeSource (hiện tại: $(node -v 2>/dev/null || echo 'chưa cài'))"
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
   apt-get install -y -qq nodejs >/dev/null
+  c_ok "Đã cài Node.js $(node -v)"
 fi
-command -v pm2 >/dev/null || npm install -g pm2 --silent >/dev/null
-c_ok "Node $(node -v) · PM2 $(pm2 -v)"
+
+NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"
+export PATH="$PATH:/usr/local/bin:$NPM_BIN"
+hash -r 2>/dev/null || true
+
+if command -v pm2 >/dev/null 2>&1; then
+  c_ok "PM2 đã sẵn sàng: v$(pm2 -v 2>/dev/null) (bỏ qua cài đặt)"
+else
+  npm install -g pm2 --silent >/dev/null
+  hash -r 2>/dev/null || true
+  c_ok "Đã cài PM2 v$(pm2 -v 2>/dev/null || echo 'mới nhất')"
+fi
 
 # ------------------------------------------------------------------------------
 c_step "3/6 Tải MNV Panel & snapshot cấu hình từ R2 (bucket ${R2_BUCKET_NAME})"

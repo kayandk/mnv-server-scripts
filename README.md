@@ -70,32 +70,45 @@ Sao chép file mẫu `.env.example` hoặc truyền trực tiếp trước khi t
 
 ## 🚀 Hướng Dẫn Triển Khai
 
-### Cách 1: Tải về và thực thi trực tiếp trên Server (Khuyên dùng)
+### Cách 1: Sử dụng file `.env` (An toàn & Khuyên dùng)
+
+Script sẽ **tự động nạp cấu hình** nếu phát hiện file `.env` nằm cùng thư mục:
 
 ```bash
-# 1. Tải script về máy chủ
+# 1. Tải script về máy chủ và cấp quyền
 curl -fsSL https://raw.githubusercontent.com/kayandk/mnv-server-scripts/main/bootstrap-server.sh -o bootstrap-server.sh
-
-# 2. Cấp quyền thực thi
 chmod +x bootstrap-server.sh
 
-# 3. Khai báo biến và chạy với quyền root
-sudo -E \
-  R2_ACCOUNT_ID="your_account_id" \
-  R2_ACCESS_KEY_ID="your_access_key" \
-  R2_SECRET_ACCESS_KEY="your_secret_key" \
-  R2_BUCKET_NAME="your_bucket" \
-  PANEL_DOMAIN="panel.example.com" \
-  ./bootstrap-server.sh
+# 2. Tạo file .env chứa thông tin cấu hình R2
+cat > .env <<'EOF'
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_BUCKET_NAME=your_bucket
+PANEL_DOMAIN=panel.example.com
+EOF
+
+# 3. Chạy trực tiếp với quyền root (tự động nạp file .env)
+sudo ./bootstrap-server.sh
 ```
 
-### Cách 2: One-liner nhanh chóng
+### Cách 2: Truyền biến môi trường trực tiếp
 
 ```bash
-sudo -E \
-  R2_ACCOUNT_ID="..." R2_ACCESS_KEY_ID="..." R2_SECRET_ACCESS_KEY="..." R2_BUCKET_NAME="..." \
-  PANEL_DOMAIN="panel.example.com" \
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/kayandk/mnv-server-scripts/main/bootstrap-server.sh)"
+sudo R2_ACCOUNT_ID="your_account_id" \
+     R2_ACCESS_KEY_ID="your_access_key" \
+     R2_SECRET_ACCESS_KEY="your_secret_key" \
+     R2_BUCKET_NAME="your_bucket" \
+     PANEL_DOMAIN="panel.example.com" \
+     ./bootstrap-server.sh
+```
+
+### Cách 3: One-liner nhanh chóng
+
+```bash
+sudo R2_ACCOUNT_ID="..." R2_ACCESS_KEY_ID="..." R2_SECRET_ACCESS_KEY="..." R2_BUCKET_NAME="..." \
+     PANEL_DOMAIN="panel.example.com" \
+     bash -c "$(curl -fsSL https://raw.githubusercontent.com/kayandk/mnv-server-scripts/main/bootstrap-server.sh)"
 ```
 
 ---
