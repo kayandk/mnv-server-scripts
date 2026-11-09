@@ -74,7 +74,7 @@ Sao chép file mẫu `.env.example` hoặc truyền trực tiếp trước khi t
 
 ```bash
 # 1. Tải script về máy chủ
-curl -fsSL https://raw.githubusercontent.com/<YOUR_ORG>/mnv-server-scripts/main/bootstrap-server.sh -o bootstrap-server.sh
+curl -fsSL https://raw.githubusercontent.com/kayandk/mnv-server-scripts/main/bootstrap-server.sh -o bootstrap-server.sh
 
 # 2. Cấp quyền thực thi
 chmod +x bootstrap-server.sh
@@ -95,7 +95,7 @@ sudo -E \
 sudo -E \
   R2_ACCOUNT_ID="..." R2_ACCESS_KEY_ID="..." R2_SECRET_ACCESS_KEY="..." R2_BUCKET_NAME="..." \
   PANEL_DOMAIN="panel.example.com" \
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/<YOUR_ORG>/mnv-server-scripts/main/bootstrap-server.sh)"
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/kayandk/mnv-server-scripts/main/bootstrap-server.sh)"
 ```
 
 ---

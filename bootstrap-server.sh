@@ -210,7 +210,7 @@ cd "$PANEL_DIR"
 if pm2 describe mnv-panel >/dev/null 2>&1; then pm2 restart mnv-panel --update-env >/dev/null; else pm2 start ecosystem.config.cjs >/dev/null; fi
 pm2 save >/dev/null
 pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
-for i in $(seq 1 30); do curl -fs "http://127.0.0.1:${PANEL_PORT}/health" >/dev/null 2>&1 && break; sleep 1; done
+for _ in $(seq 1 30); do curl -fs "http://127.0.0.1:${PANEL_PORT}/health" >/dev/null 2>&1 && break; sleep 1; done
 curl -fs "http://127.0.0.1:${PANEL_PORT}/health" >/dev/null || die "Panel không khởi động – xem: pm2 logs mnv-panel"
 rm -rf "$WORK"
 
