@@ -129,6 +129,23 @@ sudo R2_ACCOUNT_ID="..." R2_ACCESS_KEY_ID="..." R2_SECRET_ACCESS_KEY="..." R2_BU
 
 ---
 
+## 🗑️ Gỡ Cài Đặt & Dọn Sạch Dữ Liệu (Uninstall)
+
+Khi cần xóa sạch toàn bộ hệ thống MNV Panel khỏi máy chủ (bao gồm dừng tiến trình PM2, xóa database SQLite, xóa thư mục ứng dụng và dọn dẹp Nginx virtual host):
+
+```bash
+# Cách 1: Chạy có bước xác nhận an toàn (Khuyên dùng)
+sudo bash uninstall-server.sh
+
+# Cách 2: Chạy tự động không cần hỏi xác nhận (Dùng cho CI/CD)
+sudo bash uninstall-server.sh --force
+
+# Cách 3: Dọn sạch triệt để (Xóa cả file Swap 2GB và chứng chỉ Certbot)
+sudo bash uninstall-server.sh --force --purge
+```
+
+---
+
 ## 📄 Bản Quyền (License)
 
 Dự án được phân phối dưới giấy phép [MIT License](file:///d:/mnv/mnv-server-scripts/LICENSE).
